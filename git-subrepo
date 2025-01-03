@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Ensure script is run with 3 arguments: repo URL, branch, target path
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <repo-url> <branch> <target-path>"
+    exit 1
+fi
+
+# Assign the arguments to variables
+REPO_URL=$1
+BRANCH=$2
+TARGET_PATH=$3
+
+# Get the absolute path of the target directory
+PWD_DIR=$(pwd)
+TARGET_ABS_PATH="$PWD_DIR/$TARGET_PATH"
+
+# Create the target directory in the current working directory (PWD) if it doesn't exist
+mkdir -p "$TARGET_ABS_PATH"
+
+# Add the repository remote and fetch the branch
+git remote add temp-repo "$REPO_URL"
+git fetch temp-repo
+
+# Checkout the branch from the repository
+git checkout temp-repo/"$BRANCH" -- .
+
+# Move all files and directories (excluding the target directory and .git) to the target path
+for file in * .*; do
+  # Skip special entries, the target directory itself, .git, and its parent path
+  if [ "$file" == "." ] || [ "$file" == ".." ] || [ "$file" == "$(basename "$TARGET_PATH")" ] || [ "$file" == ".git" ]; then
+    continue
+  fi
+
+  # Skip if the source and target paths are the same (to avoid recursion)
+  SOURCE_ABS_PATH="$PWD_DIR/$file"
+  if [ "$SOURCE_ABS_PATH" == "$TARGET_ABS_PATH" ]; then
+    continue
+  fi
+
+  # Move files and directories to the target path
+  if [ -e "$file" ]; then
+    git mv "$file" "$TARGET_ABS_PATH/"
+  fi
+done
+
+# Move `.vscode` if it exists
+if [ -d ".vscode" ]; then
+  git mv ".vscode" "$TARGET_ABS_PATH/"
+fi
+
+# Clean up by removing the temporary remote
+git remote remove temp-repo
+
+echo "Files have been moved to $TARGET_ABS_PATH"
+
