@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# Must provide yaml file like this:
+#repositories:
+#  - url: git@URL1
+#    branch: branch1
+#    path: path/to/repo
+#  - url: git@URL2
+#    branch: branch2
+#    path: path/to/repo
+
+# Ensure yq is installed
+if ! command -v yq &> /dev/null; then
+  echo "Error: 'yq' is not installed. Please install it to parse YAML."
+  exit 1
+fi
+
+# Ensure script is run with a YAML file argument
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <yaml-file>"
+    exit 1
+fi
+
+YAML_FILE=$1
+
+# Ensure the YAML file exists
+if [ ! -f "$YAML_FILE" ]; then
+    echo "Error: File '$YAML_FILE' not found."
+    exit 1
+fi
+
+# Get the current working directory
+MONOREPO_DIR=$(pwd)
+
+# Check if mktemp is available and get full path if it is
+if command -v mktemp &> /dev/null; then
+    mktemp=$(command -v mktemp)
+else
+    echo "Error: 'mktemp' command not found."
+    exit 1
+fi
+
+# Get full paths for git, mkdir, and rm
+SYSTEM_PATH=$PATH
+
+process_repository() {
+    local REPO_URL=$1
+    local BRANCH=$2
+    local TARGET_PATH=$3
+
+    export PATH=$SYSTEM_PATH
+
+    echo "Processing repository: $REPO_URL (branch: $BRANCH) -> $TARGET_PATH"
+
+    # Create a temporary directory using mktemp
+    TEMP_DIR=$(mktemp -d)
+    if [ ! -d "$TEMP_DIR" ]; then
+        echo "Error: Failed to create a temporary directory."
+        exit 1
+    fi
+
+    # Clone the repository into the temporary directory
+    git clone --no-checkout "$REPO_URL" "$TEMP_DIR"
+
+    # Ensure we're in the right directory and it's a Git repository
+    if [ ! -d "$TEMP_DIR/.git" ]; then
+        echo "Error: The cloned directory is not a Git repository."
+        exit 1
+    fi
+
+    # Navigate to the temporary directory
+    cd "$TEMP_DIR" || exit 1
+
+    # Ensure GIT_DISCOVERY_ACROSS_FILESYSTEM is set
+    export GIT_DISCOVERY_ACROSS_FILESYSTEM=1
+
+    # Set up sparse checkout
+    echo "Initializing sparse-checkout and checking out branch: $BRANCH"
+    git sparse-checkout init --cone
+    git sparse-checkout set .
+    git checkout "$BRANCH"
+
+    # Debug: Check if the files are in the directory
+    echo "Files in $TEMP_DIR after checkout:"
+    ls -la "$TEMP_DIR"
+
+    # Copy contents to the target path (check if files exist)
+    if [ "$(ls -A $TEMP_DIR)" ]; then
+        echo "Moving files from $TEMP_DIR to $MONOREPO_DIR/$TARGET_PATH"
+        mkdir -p "$MONOREPO_DIR/$TARGET_PATH"
+        mv "$TEMP_DIR"/* "$MONOREPO_DIR/$TARGET_PATH/" 2>/dev/null || true
+        mv "$TEMP_DIR"/.* "$MONOREPO_DIR/$TARGET_PATH/" 2>/dev/null || true
+    else
+        echo "Warning: No files found to move from $TEMP_DIR."
+    fi
+
+    # Revert to the original directory
+    cd "$MONOREPO_DIR" || exit 1
+
+    # Clean up the temporary directory
+    rm -rf "$TEMP_DIR"
+}
+
+# Parse the YAML file and process each repository
+yq eval '.repositories[] | .url + " " + .branch + " " + .path' "$YAML_FILE" | while IFS=' ' read -r URL BRANCH PATH; do
+    process_repository "$URL" "$BRANCH" "$PATH"
+done
+
+echo "Monorepo creation complete!"
+
