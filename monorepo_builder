@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# Must provide yaml file like this:
-#repositories:
-#  - url: git@URL1
-#    branch: branch1
-#    path: path/to/repo
-#  - url: git@URL2
-#    branch: branch2
-#    path: path/to/repo
-
 # Ensure yq is installed
 if ! command -v yq &> /dev/null; then
   echo "Error: 'yq' is not installed. Please install it to parse YAML."
@@ -60,7 +51,8 @@ process_repository() {
     fi
 
     # Clone the repository into the temporary directory
-    git clone --no-checkout "$REPO_URL" "$TEMP_DIR"
+    echo "Checking out branch: $BRANCH on URL: $REPO_URL"
+    git clone --depth 1 "$REPO_URL" -b $BRANCH "$TEMP_DIR"
 
     # Ensure we're in the right directory and it's a Git repository
     if [ ! -d "$TEMP_DIR/.git" ]; then
@@ -75,10 +67,10 @@ process_repository() {
     export GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 
     # Set up sparse checkout
-    echo "Initializing sparse-checkout and checking out branch: $BRANCH"
-    git sparse-checkout init --cone
-    git sparse-checkout set .
-    git checkout "$BRANCH"
+    #echo "Initializing sparse-checkout and checking out branch: $BRANCH"
+    #git sparse-checkout init --cone
+    #git sparse-checkout set .
+    #git checkout "$BRANCH"
 
     # Debug: Check if the files are in the directory
     echo "Files in $TEMP_DIR after checkout:"
