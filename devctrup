@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# export local folder as variable
+export DEVCTR_IMAGE=$(basename $(pwd))
+
+# build image
+podman build -t devcontainer-$DEVCTR_IMAGE:latest --target=dev -f .devcontainer/Dockerfile --format=docker .
+
+# run image
+podman run -it --rm --userns=keep-id:uid=1001,gid=1001 -v $(pwd):/workspaces/$DEVCTR_IMAGE:z --name devcontainer-$DEVCTR_IMAGE devcontainer-$DEVCTR_IMAGE:latest'
